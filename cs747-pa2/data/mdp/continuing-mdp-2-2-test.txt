@@ -1,0 +1,12 @@
+numStates 2
+numActions 2
+start 0
+end -1
+transition 0 0 0 -1 0.3
+transition 0 0 1 1 0.7
+transition 0 1 0 -0.2 0.6
+transition 0 1 1 0.7 0.4
+transition 1 0 1 0.2 1.0
+transition 1 1 0 -0.8 1.0
+mdptype continuing
+discount  0.5

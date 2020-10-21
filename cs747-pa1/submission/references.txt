@@ -1,0 +1,1 @@
+Numpy documentation for various drawing samples from beta and binomial distributions - https://numpy.org/doc/
