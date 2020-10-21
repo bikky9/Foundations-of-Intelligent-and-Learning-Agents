@@ -1,6 +1,6 @@
 import argparse
 import numpy as np
-from collections import defaultdict
+import pulp as pl
 
 
 def valueIteration(numStates, numActions, startState, endStates, T, R, mdptype, discount):
@@ -39,19 +39,35 @@ def howardPolicyIteration(numStates, numActions, startState, endStates, T, R, md
     :return: Optimal Value, Optimal Policy
     """
     policy = np.zeros(numStates, dtype=int)
-    print([[R[i, policy[i], :] for i in range(numStates)]])
-    value = (1 / (1 - np.sum([discount*T[i, policy[i], :] for i in range(numStates)], axis=1))) * np.sum([T[i, policy[i], :]*R[i, policy[i], :] for i in range(numStates)], axis=1)
-    Q = np.max(np.sum(T * (R + discount * value), axis=2), axis=1)
-    IA = np.asarray(Q > value)
-    while np.sum(IA):
-        policy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
-        print((1 / (1 - np.sum([discount*T[i, policy[i], :] for i in range(numStates)], axis=1))))
-        value = (1 / (1 - np.sum([discount*T[i, policy[i], :] for i in range(numStates)], axis=1))) * np.sum([T[i, policy[i], :]*R[i, policy[i], :] for i in range(numStates)], axis=1)
-        Q = np.max(np.sum(T * (R + discount * value), axis=2), axis=1)
-        # print(policy)
-        # print(value)
-        # print(Q)
-        IA = np.asarray(Q > value)
+
+    LpProb = pl.LpProblem('Solver')
+    valueVars = [0] * numStates
+
+    for i in range(numStates):
+        valueVars[i] = pl.LpVariable("V"+str(i))
+
+    for state in range(numStates):
+        LpProb += valueVars[state] == \
+                  pl.lpSum([T[state, policy[state], i]*(R[state, policy[state], i] + discount*valueVars[i])
+                            for i in range(numStates)])
+    LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
+    value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
+    nextPolicy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+    while not np.all(nextPolicy == policy):
+        LpProb = pl.LpProblem('Solver')
+        valueVars = [0] * numStates
+
+        for i in range(numStates):
+            valueVars[i] = pl.LpVariable("V" + str(i))
+
+        for state in range(numStates):
+            LpProb += valueVars[state] == \
+                      pl.lpSum([T[state, nextPolicy[state], i] * (R[state, nextPolicy[state], i] + discount * valueVars[i])
+                                for i in range(numStates)])
+        LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
+        value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
+        policy = nextPolicy
+        nextPolicy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
 
     return value, policy
 
@@ -69,8 +85,25 @@ def linearProgramming(numStates, numActions, startState, endStates, T, R, mdptyp
     :param discount: the discount factor of MDP - required for termination of value
     :return: Optimal Value, Optimal Policy
     """
-    value = np.random.random(numStates)
-    policy = np.random.random(numStates)
+    LpProb = pl.LpProblem('Solver', pl.LpMinimize)
+    valueVars = [0] * numStates
+
+    for i in range(numStates):
+        valueVars[i] = pl.LpVariable("V" + str(i))
+
+    LpProb += pl.lpSum(valueVars)
+
+    for state in range(numStates):
+        for action in range(numActions):
+            LpProb += valueVars[state] >= \
+                      pl.lpSum([T[state, action, i] * (R[state, action, i] + discount * valueVars[i])
+                                for i in range(numStates)])
+
+    LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
+
+    value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
+    policy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+
     return value, policy
 
 
