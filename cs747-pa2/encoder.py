@@ -13,7 +13,8 @@ def getTransitions(maze, i, j):
     if maze[i, j] == 3 or maze[i, j] == 1:
         return
     reward_free = -1
-    reward_end = 1e5
+    reward_wall = -reward_free*1e4
+    reward_end = 1e7
     N = maze.shape[0]
     M = maze.shape[1]
 
@@ -43,25 +44,33 @@ def getTransitions(maze, i, j):
     transitions = []
 
     nextPos = North(i, j)
-    if maze[nextPos] != 3:
+    if maze[nextPos] == 1:
+        print("transition", getPos((i, j)), 0, getPos(nextPos), reward_wall, 1)
+    elif maze[nextPos] != 3:
         print("transition", getPos((i, j)), 0, getPos(nextPos), reward_free, 1)
     elif maze[nextPos] == 3:
         print("transition", getPos((i, j)), 0, getPos(nextPos), reward_end, 1)
 
     nextPos = East(i, j)
-    if maze[nextPos] != 3:
+    if maze[nextPos] == 1:
+        print("transition", getPos((i, j)), 0, getPos(nextPos), reward_wall, 1)
+    elif maze[nextPos] != 3:
         print("transition", getPos((i, j)), 1, getPos(nextPos), reward_free, 1)
     elif maze[nextPos] == 3:
         print("transition", getPos((i, j)), 1, getPos(nextPos), reward_end, 1)
 
     nextPos = West(i, j)
-    if maze[nextPos] != 3:
+    if maze[nextPos] == 1:
+        print("transition", getPos((i, j)), 0, getPos(nextPos), reward_wall, 1)
+    elif maze[nextPos] != 3:
         print("transition", getPos((i, j)), 2, getPos(nextPos), reward_free, 1)
     elif maze[nextPos] == 3:
         print("transition", getPos((i, j)), 2, getPos(nextPos), reward_end, 1)
 
     nextPos = South(i, j)
-    if maze[nextPos] != 3:
+    if maze[nextPos] == 1:
+        print("transition", getPos((i, j)), 0, getPos(nextPos), reward_wall, 1)
+    elif maze[nextPos] != 3:
         print("transition", getPos((i, j)), 3, getPos(nextPos), reward_free, 1)
     elif maze[nextPos] == 3:
         print("transition", getPos((i, j)), 3, getPos(nextPos), reward_end, 1)

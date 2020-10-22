@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+from collections import defaultdict
 import pulp as pl
 
 
@@ -17,11 +18,31 @@ def valueIteration(numStates, numActions, startState, endStates, T, R, mdptype, 
     :return: Optimal Value, Optimal Policy
     """
     value = np.zeros(numStates)
-    valueNext = np.max(np.sum(T * (R + discount * value), axis=2), axis=1)
+    valueNext = np.zeros(numStates)
+    policy = np.zeros(numStates, dtype=int)
+
+    for state, actionDict in T.items():
+        valueNext[state] = float('-inf')
+        for action, nextStateDict in actionDict.items():
+            tempValue = np.sum([T[state][action][nextState] * (R[state][action][nextState] + discount*value[nextState])
+                                   for nextState in nextStateDict])
+            if tempValue > valueNext[state]:
+                valueNext[state] = tempValue
+                policy[state] = action
+
     while not np.allclose(value, valueNext, rtol=0, atol=1e-9):
-        value = valueNext
-        valueNext = np.max(np.sum(T * (R + discount * value), axis=2), axis=1)
-    policy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+        value = valueNext[:]
+        valueNext = np.zeros(numStates)
+        for state, actionDict in T.items():
+            valueNext[state] = float('-inf')
+            for action, nextStateDict in actionDict.items():
+                tempValue = np.sum(
+                    [T[state][action][nextState] * (R[state][action][nextState] + discount * value[nextState])
+                     for nextState in nextStateDict])
+                if tempValue > valueNext[state]:
+                    valueNext[state] = tempValue
+                    policy[state] = action
+
     return value, policy
 
 
@@ -46,28 +67,48 @@ def howardPolicyIteration(numStates, numActions, startState, endStates, T, R, md
     for i in range(numStates):
         valueVars[i] = pl.LpVariable("V"+str(i))
 
-    for state in range(numStates):
+    for state in T:
         LpProb += valueVars[state] == \
-                  pl.lpSum([T[state, policy[state], i]*(R[state, policy[state], i] + discount*valueVars[i])
-                            for i in range(numStates)])
+                  pl.lpSum([T[state][policy[state]][i]*(R[state][policy[state]][i] + discount*valueVars[i])
+                            for i in T[state][policy[state]]])
     LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
     value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
-    nextPolicy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+    value = [i if i is not None else 0 for i in value]
+    nextPolicy = np.zeros(numStates, dtype=int)
+    for state, actionDict in T.items():
+        temp = float('-inf')
+        for action, nextStateDict in actionDict.items():
+            tempValue = np.sum(
+                [T[state][action][nextState] * (R[state][action][nextState] + discount * value[nextState])
+                 for nextState in nextStateDict])
+            if tempValue > temp:
+                temp = tempValue
+                nextPolicy[state] = action
     while not np.all(nextPolicy == policy):
+        policy = nextPolicy[:]
         LpProb = pl.LpProblem('Solver')
         valueVars = [0] * numStates
 
         for i in range(numStates):
             valueVars[i] = pl.LpVariable("V" + str(i))
 
-        for state in range(numStates):
+        for state in T:
             LpProb += valueVars[state] == \
-                      pl.lpSum([T[state, nextPolicy[state], i] * (R[state, nextPolicy[state], i] + discount * valueVars[i])
-                                for i in range(numStates)])
+                      pl.lpSum([T[state][policy[state]][i] * (R[state][policy[state]][i] + discount * valueVars[i])
+                                for i in T[state][policy[state]]])
         LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
         value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
-        policy = nextPolicy
-        nextPolicy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+        value = [i if i is not None else 0 for i in value]
+        nextPolicy = np.zeros(numStates, dtype=int)
+        for state, actionDict in T.items():
+            temp = float('-inf')
+            for action, nextStateDict in actionDict.items():
+                tempValue = np.sum(
+                    [T[state][action][nextState] * (R[state][action][nextState] + discount * value[nextState])
+                     for nextState in nextStateDict])
+                if tempValue > temp:
+                    temp = tempValue
+                    nextPolicy[state] = action
 
     return value, policy
 
@@ -93,16 +134,25 @@ def linearProgramming(numStates, numActions, startState, endStates, T, R, mdptyp
 
     LpProb += pl.lpSum(valueVars)
 
-    for state in range(numStates):
-        for action in range(numActions):
+    for state in T:
+        for action in T[state]:
             LpProb += valueVars[state] >= \
-                      pl.lpSum([T[state, action, i] * (R[state, action, i] + discount * valueVars[i])
-                                for i in range(numStates)])
+                      pl.lpSum([T[state][action][i] * (R[state][action][i] + discount * valueVars[i])
+                                for i in T[state][action]])
 
     LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
 
     value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
-    policy = np.argmax(np.sum(T * (R + discount * value), axis=2), axis=1)
+    policy = np.zeros(numStates, dtype=int)
+    for state, actionDict in T.items():
+        temp = float('-inf')
+        for action, nextStateDict in actionDict.items():
+            tempValue = np.sum(
+                [T[state][action][nextState] * (R[state][action][nextState] + discount * value[nextState])
+                 for nextState in nextStateDict])
+            if tempValue > temp:
+                temp = tempValue
+                policy[state] = action
 
     return value, policy
 
@@ -120,8 +170,8 @@ if __name__ == '__main__':
     numActions = None
     startState = None
     endStates = list()
-    T = None
-    R = None
+    T = defaultdict(lambda : defaultdict(lambda : defaultdict(lambda : 0)))
+    R = defaultdict(lambda : defaultdict(lambda : defaultdict(lambda : 0)))
     mdptype = None
     discount = None
     # initialize above data structures
@@ -132,8 +182,8 @@ if __name__ == '__main__':
             numStates = int(parameter[1])
         elif parameter[0] == 'numActions':
             numActions = int(parameter[1])
-            T = np.zeros((numStates, numActions, numStates))
-            R = np.zeros((numStates, numActions, numStates))
+            # T = np.zeros((numStates, numActions, numStates))
+            # R = np.zeros((numStates, numActions, numStates))
         elif parameter[0] == 'start':
             startState = int(parameter[1])
         elif parameter[0] == 'end':
@@ -143,8 +193,10 @@ if __name__ == '__main__':
             s = int(parameter[1])
             a = int(parameter[2])
             s_prime = int(parameter[3])
-            R[s, a, s_prime] = float(parameter[4])
-            T[s, a, s_prime] = float(parameter[5])
+            R[s][a][s_prime] = float(parameter[4])
+            T[s][a][s_prime] = float(parameter[5])
+            # R[s, a, s_prime] = float(parameter[4])
+            # T[s, a, s_prime] = float(parameter[5])
         elif parameter[0] == 'mdptype':
             mdptype = parameter[1]
         elif parameter[0] == 'discount':
