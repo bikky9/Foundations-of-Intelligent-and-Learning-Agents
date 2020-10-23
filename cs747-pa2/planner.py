@@ -18,20 +18,9 @@ def valueIteration(numStates, numActions, startState, endStates, T, R, mdptype, 
     :return: Optimal Value, Optimal Policy
     """
     value = np.zeros(numStates)
-    valueNext = np.zeros(numStates)
     policy = np.zeros(numStates, dtype=int)
 
-    for state, actionDict in T.items():
-        valueNext[state] = float('-inf')
-        for action, nextStateDict in actionDict.items():
-            tempValue = np.sum([T[state][action][nextState] * (R[state][action][nextState] + discount*value[nextState])
-                                   for nextState in nextStateDict])
-            if tempValue > valueNext[state]:
-                valueNext[state] = tempValue
-                policy[state] = action
-
-    while not np.allclose(value, valueNext, rtol=0, atol=1e-9):
-        value = valueNext[:]
+    while True:
         valueNext = np.zeros(numStates)
         for state, actionDict in T.items():
             valueNext[state] = float('-inf')
@@ -42,6 +31,9 @@ def valueIteration(numStates, numActions, startState, endStates, T, R, mdptype, 
                 if tempValue > valueNext[state]:
                     valueNext[state] = tempValue
                     policy[state] = action
+        if np.allclose(value, valueNext, rtol=0, atol=1e-9):
+            break
+        value = valueNext[:]
 
     return value, policy
 
@@ -61,31 +53,7 @@ def howardPolicyIteration(numStates, numActions, startState, endStates, T, R, md
     """
     policy = np.zeros(numStates, dtype=int)
 
-    LpProb = pl.LpProblem('Solver')
-    valueVars = [0] * numStates
-
-    for i in range(numStates):
-        valueVars[i] = pl.LpVariable("V"+str(i))
-
-    for state in T:
-        LpProb += valueVars[state] == \
-                  pl.lpSum([T[state][policy[state]][i]*(R[state][policy[state]][i] + discount*valueVars[i])
-                            for i in T[state][policy[state]]])
-    LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
-    value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
-    value = [i if i is not None else 0 for i in value]
-    nextPolicy = np.zeros(numStates, dtype=int)
-    for state, actionDict in T.items():
-        temp = float('-inf')
-        for action, nextStateDict in actionDict.items():
-            tempValue = np.sum(
-                [T[state][action][nextState] * (R[state][action][nextState] + discount * value[nextState])
-                 for nextState in nextStateDict])
-            if tempValue > temp:
-                temp = tempValue
-                nextPolicy[state] = action
-    while not np.all(nextPolicy == policy):
-        policy = nextPolicy[:]
+    while True:
         LpProb = pl.LpProblem('Solver')
         valueVars = [0] * numStates
 
@@ -93,9 +61,13 @@ def howardPolicyIteration(numStates, numActions, startState, endStates, T, R, md
             valueVars[i] = pl.LpVariable("V" + str(i))
 
         for state in T:
-            LpProb += valueVars[state] == \
-                      pl.lpSum([T[state][policy[state]][i] * (R[state][policy[state]][i] + discount * valueVars[i])
-                                for i in T[state][policy[state]]])
+            temp = []
+            for nextState in T[state][policy[state]]:
+                if nextState in endStates:
+                    LpProb += valueVars[nextState] == 0
+                temp.append(T[state][policy[state]][nextState] * (R[state][policy[state]][nextState] + discount * valueVars[nextState]))
+            LpProb += valueVars[state] == pl.lpSum(temp)
+
         LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
         value = np.asarray([pl.value(valueVars[i]) for i in range(numStates)])
         value = [i if i is not None else 0 for i in value]
@@ -109,6 +81,9 @@ def howardPolicyIteration(numStates, numActions, startState, endStates, T, R, md
                 if tempValue > temp:
                     temp = tempValue
                     nextPolicy[state] = action
+        if np.all(nextPolicy == policy):
+            break
+        policy = nextPolicy[:]
 
     return value, policy
 
@@ -136,9 +111,12 @@ def linearProgramming(numStates, numActions, startState, endStates, T, R, mdptyp
 
     for state in T:
         for action in T[state]:
-            LpProb += valueVars[state] >= \
-                      pl.lpSum([T[state][action][i] * (R[state][action][i] + discount * valueVars[i])
-                                for i in T[state][action]])
+            temp = []
+            for nextState in T[state][action]:
+                if nextState in endStates:
+                    LpProb += valueVars[nextState] == 0
+                temp.append(T[state][action][nextState] * (R[state][action][nextState] + discount * valueVars[nextState]))
+            LpProb += valueVars[state] >= pl.lpSum(temp)
 
     LpProb.solve(pl.PULP_CBC_CMD(msg=False))  # Solver
 
