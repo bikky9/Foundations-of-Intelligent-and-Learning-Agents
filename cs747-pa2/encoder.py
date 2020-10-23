@@ -13,7 +13,7 @@ def getTransitions(maze, i, j):
     if maze[i, j] == 3 or maze[i, j] == 1:
         return
     reward_free = -1
-    reward_wall = -reward_free*1e4
+    reward_wall = reward_free
     reward_end = 1e7
     N = maze.shape[0]
     M = maze.shape[1]
@@ -99,12 +99,13 @@ def genMDP(gridFile):
     print("numStates", N * M)
     print("numActions", 4)
     print("start", getPos(np.argwhere(maze == 2)[0]))
-    print("end", getPos(np.argwhere(maze == 3)[0]))
+    end = [getPos(i) for i in np.argwhere(maze == 3)]
+    print("end", *end)
     for i in range(N):
         for j in range(M):
             getTransitions(maze=maze, i=i, j=j)
     print("mdptype", "episodic")
-    print("discount", 0.9)
+    print("discount", 0.95)
 
 
 if __name__ == '__main__':
